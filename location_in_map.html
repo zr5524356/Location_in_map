@@ -1,0 +1,2095 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>地址地图标记工具</title>
+
+  <!-- 然后再加载 CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  
+  <script type="text/tailwindcss">
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: '#165DFF',
+            secondary: '#36CFC9',
+            neutral: '#F5F7FA',
+            dark: '#1D2129'
+          },
+          fontFamily: {
+            inter: ['Inter', 'system-ui', 'sans-serif'],
+          },
+        },
+      }
+    }
+  </script>
+  
+  <style type="text/tailwindcss">
+    @layer utilities {
+      .content-auto {
+        content-visibility: auto;
+      }
+      .scrollbar-hide {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+      }
+      .scrollbar-hide::-webkit-scrollbar {
+        display: none;
+      }
+      .log-item-success {
+        @apply text-green-700 bg-green-50 border-green-100;
+      }
+      .log-item-error {
+        @apply text-red-700 bg-red-50 border-red-100;
+      }
+      .log-item-info {
+        @apply text-blue-700 bg-blue-50 border-blue-100;
+      }
+      .marker-icon {
+        @apply w-8 h-8 flex items-center justify-center rounded-full cursor-pointer transition-all hover:scale-110;
+      }
+      .custom-marker-label {
+        white-space: nowrap;
+        font-size: 12px;
+        font-weight: bold;
+        color: #333;
+        text-align: center;
+        margin-bottom: 4px;
+        background-color: rgba(255, 255, 255, 0.9);
+        padding: 2px 6px;
+        border-radius: 3px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+      }
+    }
+  </style>
+</head>
+<body class="font-inter bg-gray-50 text-dark overflow-hidden">
+  <!-- 顶部导航栏 -->
+  <header class="bg-white shadow-md h-16 fixed w-full z-50">
+    <div class="container mx-auto px-4 h-full flex items-center justify-between">
+      <div class="flex items-center space-x-2">
+        <i class="fa fa-map-marker text-primary text-2xl"></i>
+        <h1 class="text-xl font-bold text-primary">地址地图标记工具</h1>
+      </div>
+      
+      <div class="flex items-center space-x-4">
+        <button id="toggleDrawMode" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg flex items-center transition-all duration-300 shadow-md hover:shadow-lg">
+          <i class="fa fa-circle-o mr-2"></i>圆形选择
+        </button>
+        <button id="toggleMeasureTool" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center transition-all duration-300 shadow-md hover:shadow-lg">
+          <i class="fa fa-arrows-h mr-2"></i>测距工具
+        </button>
+        <button id="exportExcelBtn" style="background-color: #165DFF;" onmouseover="this.style.backgroundColor='#1149CC'" onmouseout="this.style.backgroundColor='#165DFF'" class="text-white px-4 py-2 rounded-lg flex items-center transition-all duration-300 shadow-md hover:shadow-lg">
+
+          <i class="fa fa-download mr-2"></i>导出解析结果
+        </button>
+        <button id="settingsBtn" class="bg-gray-200 hover:bg-gray-300 p-2 rounded-lg transition-all duration-300">
+          <i class="fa fa-cog text-gray-600"></i>
+        </button>
+        <button id="helpBtn" class="bg-gray-200 hover:bg-gray-300 p-2 rounded-lg transition-all duration-300">
+          <i class="fa fa-question-circle text-gray-600"></i>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- 主内容区 -->
+  <main class="pt-16 flex h-screen overflow-hidden">
+    <!-- 左侧面板 -->
+    <aside class="w-80 bg-white shadow-lg z-40 flex flex-col transition-all duration-300 transform" id="sidebar">
+      <div class="p-4 border-b">
+        <h2 class="text-lg font-semibold mb-3">地址管理</h2>
+        
+        <!-- 文件上传区域 -->
+        <div id="uploadArea" class="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:border-primary transition-colors duration-300 cursor-pointer">
+          <input type="file" id="fileInput" accept=".xlsx,.xls" class="hidden" />
+          <i class="fa fa-cloud-upload text-3xl text-gray-400 mb-2"></i>
+          <p class="text-sm text-gray-500">拖放Excel文件到此处或<span class="text-primary font-medium">点击上传</span>，批量显示定位点</p>
+          <div class="mt-2 flex flex-col space-y-2">
+            <button id="downloadTemplate1" class="text-xs text-blue-600 hover:underline">下载模板1：名称+详细地址+[颜色]</button>
+            <button id="downloadTemplate2" class="text-xs text-blue-600 hover:underline">下载模板2：名称+经度+纬度+[颜色]</button>
+          </div>
+        </div>
+        
+        <div class="mt-4 flex justify-between">
+          <button id="addNewPoint" class="bg-orange-500 hover:bg-orange-600 text-white px-3 py-1.5 rounded-lg text-sm flex items-center transition-all duration-300">
+            <i class="fa fa-plus mr-1.5"></i>添加地址
+          </button>
+          <button id="clearAll" class="bg-gray-200 hover:bg-gray-300 text-gray-700 px-3 py-1.5 rounded-lg text-sm flex items-center transition-all duration-300">
+            <i class="fa fa-trash mr-1.5"></i>清空
+          </button>
+        </div>
+        
+        <!-- 图标选择区域 -->
+        <div id="iconSelector" class="hidden mt-4 border rounded-lg p-3 bg-gray-50">
+          <h3 class="text-sm font-medium mb-2">选择标记图标</h3>
+          <div class="grid grid-cols-5 gap-2">
+            <div class="marker-icon bg-red-500 text-white" data-icon="red" title="红色图标">
+              <i class="fa fa-map-marker"></i>
+            </div>
+            <div class="marker-icon bg-blue-500 text-white" data-icon="blue" title="蓝色图标">
+              <i class="fa fa-map-marker"></i>
+            </div>
+            <div class="marker-icon bg-green-500 text-white" data-icon="green" title="绿色图标">
+              <i class="fa fa-map-marker"></i>
+            </div>
+            <div class="marker-icon bg-yellow-500 text-white" data-icon="yellow" title="黄色图标">
+              <i class="fa fa-map-marker"></i>
+            </div>
+            <div class="marker-icon bg-purple-500 text-white" data-icon="purple" title="紫色图标">
+              <i class="fa fa-map-marker"></i>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- 地址列表 -->
+      <div class="flex-1 overflow-y-auto scrollbar-hide p-2" id="addressList">
+        <div class="text-center text-gray-500 py-10">
+          <i class="fa fa-file-text-o text-4xl mb-3 opacity-30"></i>
+          <p>请上传包含名称和详细地址/经纬度的Excel文件</p>
+        </div>
+      </div>
+
+      <!-- 解析日志区域 -->
+      <div class="border-t p-3 bg-gray-50">
+        <div class="flex justify-between items-center mb-2">
+          <h3 class="text-sm font-medium text-gray-700">解析日志</h3>
+          <button id="clearLogs" class="text-xs text-gray-500 hover:text-gray-700">
+            <i class="fa fa-trash-o"></i> 清空
+          </button>
+        </div>
+        <div id="parseLogs" class="text-xs h-32 overflow-y-auto scrollbar-hide space-y-1 text-gray-600 border rounded-md p-2 bg-white text-xs">
+          <div class="text-gray-400 italic">等待解析地址...</div>
+        </div>
+      </div>
+    </aside>
+    
+    <!-- 地图容器 -->
+    <div class="flex-1 relative">
+      <div id="mapContainer" class="w-full h-full"></div>
+      
+      <!-- 地图控制按钮 -->
+      <div class="absolute right-4 top-4 bg-white rounded-lg shadow-lg p-2 flex flex-col">
+        <button id="zoomIn" class="p-2 hover:bg-gray-100 rounded transition-colors">
+          <i class="fa fa-plus"></i>
+        </button>
+        <div class="border-t border-gray-200 my-1"></div>
+        <button id="zoomOut" class="p-2 hover:bg-gray-100 rounded transition-colors">
+          <i class="fa fa-minus"></i>
+        </button>
+        <div class="border-t border-gray-200 my-1"></div>
+        <button id="centerMap" class="p-2 hover:bg-gray-100 rounded transition-colors">
+          <i class="fa fa-crosshairs"></i>
+        </button>
+      </div>
+      
+      <!-- 圆形选择结果提示 -->
+      <div id="circleResult" class="hidden absolute left-4 top-4 bg-white px-4 py-2 rounded-lg shadow-lg border border-gray-200">
+        <p class="font-medium text-gray-800"><span id="circleCount">0</span> 个点位在选择范围内</p>
+        <button id="clearCircle" class="text-xs text-primary mt-1 hover:underline">清除选择</button>
+      </div>
+      
+      <!-- 测距结果提示 -->
+      <div id="measureResult" class="hidden absolute left-4 top-24 bg-white px-4 py-2 rounded-lg shadow-lg border border-gray-200">
+        <p class="font-medium text-gray-800">总距离: <span id="distanceValue">0</span> 米</p>
+        <button id="clearMeasure" class="text-xs text-primary mt-1 hover:underline">清除测距</button>
+      </div>
+    </div>
+  </main>
+  
+  <!-- 帮助模态框 -->
+  <div id="helpModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center hidden">
+    <div class="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[80vh] overflow-y-auto">
+      <div class="p-5 border-b flex justify-between items-center">
+        <h3 class="text-lg font-bold">使用帮助</h3>
+        <button id="closeHelpModal" class="text-gray-500 hover:text-gray-700">
+          <i class="fa fa-times"></i>
+        </button>
+      </div>
+      <div class="p-5 space-y-4">
+        <div>
+          <h4 class="font-semibold mb-2">核心价值</h4>
+          <p class="text-gray-600 text-sm">地址地图标记工具是一款高效的空间数据可视化工具，帮助用户快速将地址数据转换为地图上的标记点，支持批量导入、地址解析、可视化分析和数据导出等功能，广泛应用于物流规划、市场分析、资源分布统计等场景。</p>
+        </div>
+        <div>
+          <h4 class="font-semibold mb-2">使用方法</h4>
+          <ul class="list-disc pl-5 text-gray-600 text-sm mt-1 space-y-1">
+            <li>点击上传按钮或拖放Excel文件导入数据</li>
+            <li>支持两种导入格式：名称+详细地址+[颜色] 或 名称+经度+纬度+[颜色]</li>
+            <li>系统自动解析地址获取经纬度，支持批量处理</li>
+            <li>使用圆形选择功能快速筛选区域内的标记点</li>
+            <li>使用测距工具测量地图上两点间的距离</li>
+            <li>可导出解析结果Excel文件</li>
+          </ul>
+        </div>
+        <div>
+          <h4 class="font-semibold mb-2">注意事项</h4>
+          <ul class="list-disc pl-5 text-gray-600 text-sm mt-1 space-y-1">
+            <li>导入Excel文件必须包含名称和地址/经纬度字段</li>
+            <li>地址解析高德地图地址逆解析API，需要注册账号，<a href="https://amap.apifox.cn/api-14546468" target="_blank" class="text-blue-600 hover:underline">点击这里</a></li>
+            <li>API调用有频率限制，避免过快批量操作</li>
+            <li>建议单次导入数据量不超过1000条</li>
+            <li>请确保Excel文件格式正确，避免特殊字符</li>
+          </ul>
+        </div>
+        <div>
+          <h4 class="font-semibold mb-2">联系方式</h4>
+          <p class="text-gray-600 text-sm">如有问题或建议，请联系：<span class="text-blue-600">zr5524356@qq.com</span></p>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- 设置模态框 -->
+  <div id="settingsModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center hidden">
+    <div class="bg-white rounded-lg shadow-xl w-full max-w-md max-h-[80vh] overflow-y-auto">
+      <div class="p-5 border-b flex justify-between items-center">
+        <h3 class="text-lg font-bold">API设置</h3>
+        <button id="closeSettingsModal" class="text-gray-500 hover:text-gray-700">
+          <i class="fa fa-times"></i>
+        </button>
+      </div>
+      <div class="p-5 space-y-4">
+        <div>
+          <label for="apiConfigKey" class="block text-sm font-medium text-gray-700 mb-1">高德API密钥</label>
+          <div class="relative">
+            <input type="text" id="apiConfigKey" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition-all" placeholder="请输入高德API密钥">
+            <button id="toggleApiKeyVisibility" class="absolute right-10 top-2 text-gray-500">
+              <i class="fa fa-eye"></i>
+            </button>
+            <button id="testApiKey" class="absolute right-2 top-2 text-gray-500">
+              <i class="fa fa-bolt"></i>
+            </button>
+          </div>
+        </div>
+        <div>
+          <label for="apiCallInterval" class="block text-sm font-medium text-gray-700 mb-1">API调用间隔（毫秒）</label>
+          <input type="number" id="apiCallInterval" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition-all" placeholder="请输入调用间隔（毫秒）" min="100" value="200">
+          <p class="text-xs text-gray-500 mt-1">建议设置为200毫秒以上，避免请求过于频繁</p>
+        </div>
+        <div>
+          <label for="maxRetries" class="block text-sm font-medium text-gray-700 mb-1">最大重试次数</label>
+          <input type="number" id="maxRetries" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition-all" placeholder="请输入最大重试次数" min="1" max="10" value="3">
+        </div>
+        <div>
+          <label for="maxConsecutiveErrors" class="block text-sm font-medium text-gray-700 mb-1">最大连续错误次数</label>
+          <input type="number" id="maxConsecutiveErrors" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition-all" placeholder="请输入最大连续错误次数" min="1" max="10" value="3">
+        </div>
+      </div>
+      <div class="p-5 border-t flex justify-end">
+        <button id="saveSettings" style="background-color: #165DFF;" onmouseover="this.style.backgroundColor='#1149CC'" onmouseout="this.style.backgroundColor='#165DFF'" class="text-white px-4 py-2 rounded-lg transition-all duration-300">
+          <i class="fa fa-check mr-2"></i>保存设置
+        </button>
+      </div>
+    </div>
+  </div>
+  
+  <!-- 添加/编辑标记点的弹出框 -->
+  <div id="pointModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center hidden">
+    <div class="bg-white rounded-lg shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+      <div class="p-4 border-b flex justify-between items-center">
+        <h2 class="text-lg font-semibold" id="modalTitle">编辑地址</h2>
+        <button id="closePointModal" class="text-gray-500 hover:text-gray-700 p-1">
+          <i class="fa fa-times"></i>
+        </button>
+      </div>
+      
+      <div class="p-4">
+        <form id="pointForm" class="space-y-4">
+          <input type="hidden" id="pointId" />
+          <input type="hidden" id="pointIcon" value="red" />
+          
+          <div>
+            <label for="pointName" class="block text-sm font-medium text-gray-700 mb-1">名称</label>
+            <input type="text" id="pointName" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition-all" placeholder="请输入名称">
+          </div>
+          
+          <div>
+            <label for="pointAddress" class="block text-sm font-medium text-gray-700 mb-1">详细地址（结构化）</label>
+            <textarea id="pointAddress" rows="3" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition-all" placeholder="请输入结构化地址（如：北京市朝阳区阜通东大道6号）"></textarea>
+          </div>
+          
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label for="pointLng" class="block text-sm font-medium text-gray-700 mb-1">经度</label>
+              <input type="text" id="pointLng" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition-all" placeholder="可选，自动解析或手动输入">
+            </div>
+            <div>
+              <label for="pointLat" class="block text-sm font-medium text-gray-700 mb-1">纬度</label>
+              <input type="text" id="pointLat" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition-all" placeholder="可选，自动解析或手动输入">
+            </div>
+          </div>
+          
+          <!-- 编辑时的图标选择 -->
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">标记图标</label>
+            <div class="grid grid-cols-5 gap-2">
+              <div class="marker-icon bg-red-500 text-white" data-icon="red" title="红色图标">
+                <i class="fa fa-map-marker"></i>
+              </div>
+              <div class="marker-icon bg-blue-500 text-white" data-icon="blue" title="蓝色图标">
+                <i class="fa fa-map-marker"></i>
+              </div>
+              <div class="marker-icon bg-green-500 text-white" data-icon="green" title="绿色图标">
+                <i class="fa fa-map-marker"></i>
+              </div>
+              <div class="marker-icon bg-yellow-500 text-white" data-icon="yellow" title="黄色图标">
+                <i class="fa fa-map-marker"></i>
+              </div>
+              <div class="marker-icon bg-purple-500 text-white" data-icon="purple" title="紫色图标">
+                <i class="fa fa-map-marker"></i>
+              </div>
+            </div>
+          </div>
+          
+          <div class="pt-2">
+            <button type="button" id="resolveAddress" style="background-color: #36CFC9;" onmouseover="this.style.backgroundColor='#2BA8A0'" onmouseout="this.style.backgroundColor='#36CFC9'" class="w-full text-white px-4 py-2 rounded-lg flex items-center justify-center transition-all duration-300">
+              <i class="fa fa-search mr-2"></i>解析详细地址获取经纬度
+            </button>
+          </div>
+        </form>
+      </div>
+      
+      <div class="p-4 border-t flex justify-between">
+        <button id="deletePoint" class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg transition-all duration-300">
+          <i class="fa fa-trash mr-2"></i>删除
+        </button>
+        <button id="savePoint" style="background-color: #165DFF;" onmouseover="this.style.backgroundColor='#1149CC'" onmouseout="this.style.backgroundColor='#165DFF'" class="text-white px-4 py-2 rounded-lg transition-all duration-300">
+          <i class="fa fa-check mr-2"></i>保存
+        </button>
+      </div>
+    </div>
+  </div>
+  
+  <!-- 通知提示 -->
+  <div id="notification" class="fixed bottom-4 right-4 bg-gray-800 text-white px-4 py-3 rounded-lg shadow-lg transform transition-all duration-300 flex items-center translate-y-20 opacity-0">
+    <i id="notificationIcon" class="fa fa-exclamation-circle mr-2 text-red-400"></i>
+    <span id="notificationText">请先配置高德地图地址逆解析API-Key</span>
+  </div>
+  
+  <!-- 数据处理汇总模态框 -->
+  <div id="summaryModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center hidden">
+    <div class="bg-white rounded-lg shadow-xl w-full max-w-md max-h-[80vh] overflow-y-auto">
+      <div class="p-5 border-b flex justify-between items-center">
+        <h3 class="text-lg font-bold">数据处理汇总</h3>
+        <button id="closeSummaryModal" class="text-gray-500 hover:text-gray-700">
+          <i class="fa fa-times"></i>
+        </button>
+      </div>
+      <div class="p-5 space-y-4">
+        <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <h4 class="font-semibold text-blue-800 mb-2">处理结果汇总</h4>
+          <div class="grid grid-cols-3 gap-4 text-center">
+            <div class="bg-white p-3 rounded-lg shadow">
+              <div class="text-2xl font-bold text-blue-600" id="summaryTotal">0</div>
+              <div class="text-sm text-gray-600">导入总数</div>
+            </div>
+            <div class="bg-white p-3 rounded-lg shadow">
+              <div class="text-2xl font-bold text-green-600" id="summarySuccess">0</div>
+              <div class="text-sm text-gray-600">成功解析</div>
+            </div>
+            <div class="bg-white p-3 rounded-lg shadow">
+              <div class="text-2xl font-bold text-red-600" id="summaryFailed">0</div>
+              <div class="text-sm text-gray-600">解析失败</div>
+            </div>
+          </div>
+        </div>
+        <div class="bg-gray-50 p-4 rounded-lg">
+          <h4 class="font-semibold text-gray-800 mb-2">处理详情</h4>
+          <ul id="summaryDetails" class="space-y-2 text-sm text-gray-700"></ul>
+        </div>
+      </div>
+      <div class="p-5 border-t flex justify-end">
+        <button id="closeSummaryBtn" style="background-color: #165DFF;" onmouseover="this.style.backgroundColor='#1149CC'" onmouseout="this.style.backgroundColor='#165DFF'" class="text-white px-4 py-2 rounded-lg transition-all duration-300">
+          <i class="fa fa-check mr-2"></i>确定
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 引入高德地图API和UI组件库 -->
+  <script type="text/javascript" src="https://webapi.amap.com/maps?v=2.0&key=4c0dcbcbb8736d284c8261af3921e17c"></script>
+  <script type="text/javascript" src="https://webapi.amap.com/ui/1.1/main.js"></script>
+  
+  <script>
+    // 全局变量
+    let map = null;
+    let SimpleMarker = null;
+    let markers = [];
+    let addressData = [];
+    let currentEditId = null;
+    let totalParseCount = 0;
+    let successParseCount = 0;
+    let mouseTool = null;
+    let isDrawMode = false;
+    let currentCircle = null;
+    let selectedPoints = [];
+    let isMeasuring = false;
+    let measurePath = null;
+    let measurePoints = [];
+    let measureLine = null;
+    let measureLabel = null;
+
+    
+    // 高德Web服务API密钥
+    let AMAP_WEB_SERVICE_KEY = "";
+    let GEOCODE_API_URL = "https://restapi.amap.com/v3/geocode/geo";
+    
+    // API调用限制相关变量
+    let consecutiveErrorCount = 0; // 连续错误计数
+    let MAX_CONSECUTIVE_ERRORS = 3; // 最大连续错误次数
+    let isApiPaused = false; // 是否暂停API调用
+    let lastApiCallTime = 0; // 上次API调用时间
+    let apiCallQueue = []; // API调用队列
+    let API_CALL_INTERVAL = 200; // API调用间隔（毫秒）
+    let MAX_RETRIES = 3; // 最大重试次数
+    
+    // 数据处理统计
+    let currentImportStats = {
+      total: 0,
+      success: 0,
+      failed: 0,
+      details: []
+    };
+    
+    // SimpleMarker图标配置
+    const simpleMarkerStyles = {
+      red: { iconTheme: 'default', iconStyle: 'red', labelColor: '#fff' },
+      blue: { iconTheme: 'default', iconStyle: 'blue', labelColor: '#fff' },
+      green: { iconTheme: 'default', iconStyle: 'green', labelColor: '#fff' },
+      yellow: { iconTheme: 'default', iconStyle: 'yellow', labelColor: '#000' },
+      purple: { iconTheme: 'fresh', iconStyle: 'purple', labelColor: '#fff' }
+    };
+    
+    // 颜色名称映射
+    const colorNameMap = {
+      '红色': 'red', '红': 'red',
+      '蓝色': 'blue', '蓝': 'blue',
+      '绿色': 'green', '绿': 'green',
+      '黄色': 'yellow', '黄': 'yellow',
+      '紫色': 'purple', '紫': 'purple',
+      'red': 'red', 'blue': 'blue', 'green': 'green', 'yellow': 'yellow', 'purple': 'purple'
+    };
+    
+    // DOM元素
+    const fileInput = document.getElementById('fileInput');
+    const uploadArea = document.getElementById('uploadArea');
+    const addressList = document.getElementById('addressList');
+    const addNewPointBtn = document.getElementById('addNewPoint');
+    const pointModal = document.getElementById('pointModal');
+    const closePointModalBtn = document.getElementById('closePointModal');
+    const pointForm = document.getElementById('pointForm');
+    const pointIdInput = document.getElementById('pointId');
+    const pointNameInput = document.getElementById('pointName');
+    const pointAddressInput = document.getElementById('pointAddress');
+    const pointLngInput = document.getElementById('pointLng');
+    const pointLatInput = document.getElementById('pointLat');
+    const pointIconInput = document.getElementById('pointIcon');
+    const resolveAddressBtn = document.getElementById('resolveAddress');
+    const savePointBtn = document.getElementById('savePoint');
+    const deletePointBtn = document.getElementById('deletePoint');
+    const clearAllBtn = document.getElementById('clearAll');
+    const exportExcelBtn = document.getElementById('exportExcelBtn');
+    const zoomInBtn = document.getElementById('zoomIn');
+    const zoomOutBtn = document.getElementById('zoomOut');
+    const centerMapBtn = document.getElementById('centerMap');
+    const helpBtn = document.getElementById('helpBtn');
+    const helpModal = document.getElementById('helpModal');
+    const closeHelpModalBtn = document.getElementById('closeHelpModal');
+    const notification = document.getElementById('notification');
+    const notificationIcon = document.getElementById('notificationIcon');
+    const notificationText = document.getElementById('notificationText');
+    const modalTitle = document.getElementById('modalTitle');
+    const parseLogs = document.getElementById('parseLogs');
+    const clearLogsBtn = document.getElementById('clearLogs');
+    const toggleDrawModeBtn = document.getElementById('toggleDrawMode');
+    const circleResult = document.getElementById('circleResult');
+    const circleCount = document.getElementById('circleCount');
+    const clearCircleBtn = document.getElementById('clearCircle');
+    const iconSelector = document.getElementById('iconSelector');
+    const toggleMeasureToolBtn = document.getElementById('toggleMeasureTool');
+    const measureResult = document.getElementById('measureResult');
+    const distanceValue = document.getElementById('distanceValue');
+    const clearMeasureBtn = document.getElementById('clearMeasure');
+    const settingsBtn = document.getElementById('settingsBtn');
+    const settingsModal = document.getElementById('settingsModal');
+    const closeSettingsModalBtn = document.getElementById('closeSettingsModal');
+    const apiConfigKey = document.getElementById('apiConfigKey');
+    const apiCallInterval = document.getElementById('apiCallInterval');
+    const maxRetries = document.getElementById('maxRetries');
+    const maxConsecutiveErrors = document.getElementById('maxConsecutiveErrors');
+    const saveSettingsBtn = document.getElementById('saveSettings');
+    const summaryModal = document.getElementById('summaryModal');
+    const closeSummaryModalBtn = document.getElementById('closeSummaryModal');
+    const summaryTotal = document.getElementById('summaryTotal');
+    const summarySuccess = document.getElementById('summarySuccess');
+    const summaryFailed = document.getElementById('summaryFailed');
+    const summaryDetails = document.getElementById('summaryDetails');
+    const closeSummaryBtn = document.getElementById('closeSummaryBtn');
+    const downloadTemplate1 = document.getElementById('downloadTemplate1');
+    const downloadTemplate2 = document.getElementById('downloadTemplate2');
+    const toggleApiKeyVisibility = document.getElementById('toggleApiKeyVisibility');
+    const testApiKey = document.getElementById('testApiKey');
+    
+    // 圆形选择相关变量
+    let circleCenter = null; // 圆心
+    let circleRadius = 0; // 半径
+    let circleCenterMarker = null; // 圆心标记
+    let circlePreview = null; // 圆形预览
+    let circleMouseMoveHandler = null; // 鼠标移动事件处理器
+    let isCircleCompleted = false; // 圆形是否已完成
+    let isCircleRadiusFixed = false; // 圆形半径是否已固定
+    
+    // 初始化地图
+    function initMap() {
+      // 创建基础地图实例
+      map = new AMap.Map('mapContainer', {
+        zoom: 10,
+        center: [ 104.065735, 30.659462],
+        resizeEnable: true
+      });
+      
+      // 加载所需的地图组件
+      AMap.plugin(['AMap.Label', 'AMap.MouseTool', 'AMap.ControlBar', 'AMap.Geolocation'], function() {
+        // 加载SimpleMarker组件
+        AMapUI.loadUI(['overlay/SimpleMarker'], function(loadedSimpleMarker) {
+          SimpleMarker = loadedSimpleMarker;
+          addLog('地图组件加载完成，可开始添加标记', 'info');
+          
+          // 添加控制栏
+          const controlBar = new AMap.ControlBar({ position: 'RB' });
+          map.addControl(controlBar);
+          
+          // 定位到用户所在城市
+          const geolocation = new AMap.Geolocation({
+            enableHighAccuracy: true,
+            timeout: 10000,
+            buttonPosition: 'RB'
+          });
+          
+          geolocation.getCurrentPosition(function(status, result) {
+            if (status === 'complete' && result.info === 'SUCCESS') {
+              map.setCenter(result.position);
+            }
+          });
+          
+          // 初始化鼠标工具
+          mouseTool = new AMap.MouseTool(map);
+          
+          // 监听圆形绘制完成事件
+          mouseTool.on('draw', function(e) {
+            if (e.obj.getType() === 'circle' && isDrawMode) {
+              currentCircle = e.obj;
+              // 将圆形置于最顶层
+              currentCircle.setOptions({ zIndex: 9999 });
+            }
+          });
+          
+          // 初始化地图事件
+          initMapEvents();
+        });
+      });
+    }
+    
+    // 初始化地图事件
+    function initMapEvents() {
+      // 地图双击事件
+      map.on('dblclick', function(e) {
+        if (isDrawMode && currentCircle) {
+          completeCircleDrawing();
+        } else if (isMeasuring && measurePoints.length > 0) {
+          completeMeasurement();
+        }
+      });
+      
+      // 地图单击事件
+      map.on('click', function(e) {
+        if (isMeasuring) {
+          addMeasurePoint(e.lnglat);
+        } else if (isDrawMode) {
+          handleCircleSelection(e.lnglat);
+        }
+      });
+    }
+    
+    // 处理圆形选择点击事件
+    function handleCircleSelection(lnglat) {
+      if (!circleCenter) {
+        // 第一次点击：设置圆心
+        circleCenter = lnglat;
+        createCircleCenterMarker();
+        showNotification('已设置圆心，请移动鼠标调整半径（点击确认半径）');
+        
+        // 监听鼠标移动事件，动态绘制圆形预览（支持实时放大缩小）
+        if (circleMouseMoveHandler) {
+          map.off('mousemove', circleMouseMoveHandler);
+        }
+        
+        circleMouseMoveHandler = function(e) {
+          if (circleCenter && !isCircleCompleted) { // 修改条件为!isCircleCompleted
+            const radius = circleCenter.distance(e.lnglat);
+            // 确保半径不为0，避免异常
+            if (radius > 0) {
+              circleRadius = radius;
+              updateCirclePreview(radius);
+            }
+          }
+        };
+        
+        map.on('mousemove', circleMouseMoveHandler);
+      } else if (!isCircleCompleted) {
+        // 第二次点击：确认半径并显示结果
+        calculatePointsInCircle();
+        highlightSelectedPoints(true);
+        
+        // 更新提示
+        circleResult.classList.remove('hidden');
+        circleCount.textContent = selectedPoints.length;
+        
+        // 标记圆形已完成，但保留鼠标移动响应（可选）
+        isCircleCompleted = true;
+        
+        showNotification(`圆形选择完成，共选中 ${selectedPoints.length} 个点位（再次点击重新绘制）`);
+      } else {
+        // 再次点击：重新开始选择
+        clearCircleSelection();
+        // 直接进入新的圆心设置
+        circleCenter = lnglat;
+        createCircleCenterMarker();
+        isCircleCompleted = false; // 重置完成状态
+        showNotification('已设置新圆心，请移动鼠标调整半径（点击确认半径）');
+        
+        // 重新监听鼠标移动事件
+        if (circleMouseMoveHandler) {
+          map.off('mousemove', circleMouseMoveHandler);
+        }
+        
+        circleMouseMoveHandler = function(e) {
+          if (circleCenter && !isCircleCompleted) {
+            const radius = circleCenter.distance(e.lnglat);
+            if (radius > 0) {
+              circleRadius = radius;
+              updateCirclePreview(radius);
+            }
+          }
+        };
+        
+        map.on('mousemove', circleMouseMoveHandler);
+      }
+    }
+    
+    // 更新圆形预览
+    function updateCirclePreview(radius) {
+      if (circlePreview) {
+        map.remove(circlePreview);
+      }
+      
+      circlePreview = new AMap.Circle({
+        center: circleCenter,
+        radius: radius,
+        strokeColor: '#165DFF',
+        strokeOpacity: 0.8,
+        strokeWeight: 2,
+        fillColor: '#165DFF',
+        fillOpacity: 0.1,
+        zIndex: 9999 // 确保圆形预览在最顶层
+      });
+      
+      map.add(circlePreview);
+    }
+    
+    // 创建圆心标记
+    function createCircleCenterMarker() {
+      if (circleCenterMarker) {
+        map.remove(circleCenterMarker);
+      }
+      
+      circleCenterMarker = new AMap.Marker({
+        position: circleCenter,
+        icon: new AMap.Icon({
+          size: new AMap.Size(20, 20),
+          image: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0iIzE2NURGRiIgZD0iTTExLjUgMkM2LjggMiAyIDYuOCAyIDExLjVzNC44IDkuNSA5LjUgOS41IDkuNS00LjggOS41LTkuNS00LjgtOS41LTkuNS05LjV6bTAgMTcuNWMtNC4xIDAtNy41LTMuNC03LjUtNy41czMuNC03LjUgNy41LTcuNSA3LjUgMy40IDcuNSA3LjUtMy43IDcuNS03LjUgNy41eiIvPjxjaXJjbGUgY3g9IjExLjUiIGN5PSIxMS41IiByPSIzIiBmaWxsPSIjMTY1REZGIi8+PC9zdmc+',
+          imageSize: new AMap.Size(20, 20)
+        }),
+        zIndex: 10000 // 确保圆心标记在最顶层
+      });
+      
+      map.add(circleCenterMarker);
+    }
+    
+    // 完成圆形绘制
+    function completeCircleDrawing() {
+      if (!currentCircle) return;
+      
+      currentCircle.setStyle({
+        strokeColor: '#165DFF',
+        strokeOpacity: 0.8,
+        strokeWeight: 2,
+        fillColor: '#165DFF',
+        fillOpacity: 0.1
+      });
+      
+      // 将圆形置于最顶层
+      currentCircle.setOptions({ zIndex: 9999 });
+      
+      calculatePointsInCircle(currentCircle);
+      mouseTool.close();
+    }
+    
+    // 计算圆形内的点位
+    function calculatePointsInCircle(circle) {
+      const center = circle ? circle.getCenter() : circleCenter;
+      const radius = circle ? circle.getRadius() : circleRadius;
+      selectedPoints = [];
+      
+      addressData.forEach(item => {
+        if (item.lng && item.lat) {
+          const point = new AMap.LngLat(item.lng, item.lat);
+          const distance = center.distance(point);
+          
+          if (distance <= radius) {
+            selectedPoints.push(item);
+          }
+        }
+      });
+    }
+    
+    // 高亮选中的点位
+    function highlightSelectedPoints(highlight) {
+      markers.forEach(markerObj => {
+        if (!markerObj || !markerObj.marker) return;
+        
+        // 检查marker是否是SimpleMarker实例
+        if (markerObj.marker instanceof SimpleMarker) {
+          const isSelected = selectedPoints.some(p => p.id === markerObj.id);
+          
+          if (highlight && isSelected) {
+            // SimpleMarker使用setOptions方法设置样式
+            markerObj.marker.setOptions({ 
+              iconSize: 40,
+              zIndex: 50 // 设置一个较低的zIndex，确保圆形在最顶层
+            });
+          } else {
+            // 恢复默认样式
+            markerObj.marker.setOptions({ 
+              iconSize: 32,
+              zIndex: 10
+            });
+          }
+        } else {
+          // 普通Marker使用setOptions方法
+          const isSelected = selectedPoints.some(p => p.id === markerObj.id);
+          
+          if (highlight && isSelected) {
+            markerObj.marker.setOptions({ 
+              icon: new AMap.Icon({
+                size: new AMap.Size(40, 40),
+                image: markerObj.marker.getOptions().icon.getImage(),
+                imageSize: new AMap.Size(40, 40)
+              }),
+              zIndex: 50 // 设置一个较低的zIndex，确保圆形在最顶层
+            });
+          } else {
+            markerObj.marker.setOptions({ 
+              icon: new AMap.Icon({
+                size: new AMap.Size(32, 32),
+                image: markerObj.marker.getOptions().icon.getImage(),
+                imageSize: new AMap.Size(32, 32)
+              }),
+              zIndex: 10
+            });
+          }
+        }
+      });
+    }
+    
+    // 切换绘图模式
+    function toggleDrawMode() {
+      if (isMeasuring) {
+        toggleMeasureTool();
+      }
+      
+      isDrawMode = !isDrawMode;
+      
+      if (isDrawMode) {
+        toggleDrawModeBtn.innerHTML = '<i class="fa fa-circle-o mr-2"></i>圆形选择(激活)';
+        toggleDrawModeBtn.classList.remove('bg-purple-600', 'hover:bg-purple-700');
+        toggleDrawModeBtn.classList.add('bg-purple-500', 'hover:bg-purple-600', 'ring-2', 'ring-purple-300');
+        
+        clearCircleSelection();
+        showNotification('已进入圆形选择模式，单击确定圆心，移动鼠标调整半径，再次单击锁定半径');
+      } else {
+        toggleDrawModeBtn.innerHTML = '<i class="fa fa-circle-o mr-2"></i>圆形选择';
+        toggleDrawModeBtn.classList.remove('bg-purple-500', 'hover:bg-purple-600', 'ring-2', 'ring-purple-300');
+        toggleDrawModeBtn.classList.add('bg-purple-600', 'hover:bg-purple-700');
+        
+        clearCircleSelection();
+        showNotification('已退出圆形选择模式');
+      }
+    }
+    
+    // 清除圆形选择
+    function clearCircleSelection() {
+      // 清除圆形选择状态
+      circleCenter = null;
+      circleRadius = 0;
+      selectedPoints = [];
+      isCircleCompleted = false;
+      isCircleRadiusFixed = false;
+      
+      // 移除圆形和标记
+      if (circleCenterMarker) {
+        map.remove(circleCenterMarker);
+        circleCenterMarker = null;
+      }
+      
+      if (circlePreview) {
+        map.remove(circlePreview);
+        circlePreview = null;
+      }
+      
+      if (currentCircle) {
+        map.remove(currentCircle);
+        currentCircle = null;
+      }
+      
+      // 移除鼠标移动事件监听
+      if (circleMouseMoveHandler) {
+        map.off('mousemove', circleMouseMoveHandler);
+        circleMouseMoveHandler = null;
+      }
+      
+      circleResult.classList.add('hidden');
+      highlightSelectedPoints(false);
+    }
+    
+    // 切换测距工具
+    function toggleMeasureTool() {
+      if (isDrawMode) {
+        toggleDrawMode();
+      }
+      
+      isMeasuring = !isMeasuring;
+      
+      if (isMeasuring) {
+        toggleMeasureToolBtn.innerHTML = '<i class="fa fa-arrows-h mr-2"></i>测距工具(激活)';
+        toggleMeasureToolBtn.classList.remove('bg-green-600', 'hover:bg-green-700');
+        toggleMeasureToolBtn.classList.add('bg-green-500', 'hover:bg-green-600', 'ring-2', 'ring-green-300');
+        
+        clearMeasurement();
+        showNotification('已进入测距模式，单击添加测量点，双击完成测量');
+      } else {
+        toggleMeasureToolBtn.innerHTML = '<i class="fa fa-arrows-h mr-2"></i>测距工具';
+        toggleMeasureToolBtn.classList.remove('bg-green-500', 'hover:bg-green-600', 'ring-2', 'ring-green-300');
+        toggleMeasureToolBtn.classList.add('bg-green-600', 'hover:bg-green-700');
+        
+        clearMeasurement();
+        showNotification('已退出测距模式');
+      }
+    }
+    
+    // 添加测量点
+    function addMeasurePoint(lnglat) {
+      measurePoints.push(lnglat);
+      
+      // 创建临时点标记
+      const marker = new AMap.Marker({
+        position: lnglat,
+        icon: new AMap.Icon({
+          size: new AMap.Size(10, 10),
+          image: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0iIzE2NURGRiIgZD0iTTEyIDEwVjE2bDIgMmgtNGwtMi0yek0xMiAydjJoMGwyLjggMCA1IDIgNSA1djE0YzAgMi44LTIuMiA1LTUgNXYwaC0wdjJoMGwyLjggMCA1LTIgNS01VjdjMC0yLjgtMi4yLTUtNS01ek02IDEwdjZoMnYtNmgtMnptMTIgMGgydi02aC0ydi0yek02IDE4djJoMnYtMmgtMnptNiAwdjJoMnYtMmgtMnoiLz48L3N2Zz4=',
+          imageSize: new AMap.Size(10, 10)
+        }),
+        zIndex: 10000
+      });
+      
+      marker.setMap(map);
+      
+      if (!measurePath) {
+        measurePath = { markers: [], line: null, label: null };
+      }
+      measurePath.markers.push(marker);
+      
+      if (measurePoints.length >= 2) {
+        updateMeasureLine();
+      }
+    }
+    
+    // 更新测量线
+    function updateMeasureLine() {
+      if (measurePath.line) map.remove(measurePath.line);
+      if (measurePath.label) map.remove(measurePath.label);
+      
+      measurePath.line = new AMap.Polyline({
+        path: measurePoints,
+        strokeColor: '#36CFC9',
+        strokeWeight: 3,
+        strokeOpacity: 0.8,
+        zIndex: 9999
+      });
+      
+      map.add(measurePath.line);
+      
+      // 计算总距离
+      let totalDistance = 0;
+      for (let i = 0; i < measurePoints.length - 1; i++) {
+        totalDistance += measurePoints[i].distance(measurePoints[i + 1]);
+      }
+      
+      distanceValue.textContent = totalDistance.toFixed(1);
+      measureResult.classList.remove('hidden');
+      
+      // 添加距离标签
+      const lastPoint = measurePoints[measurePoints.length - 1];
+      // 使用API创建Label
+      if (typeof AMap.Label === 'function') {
+        measurePath.label = new AMap.Label({
+          position: lastPoint,
+          content: `<div class="bg-white px-2 py-1 rounded shadow text-sm">${totalDistance.toFixed(1)}米</div>`,
+          offset: new AMap.Pixel(10, 0),
+          zIndex: 10000
+        });
+        map.add(measurePath.label);
+      } else {
+        // 降级方案：使用Marker代替Label
+        const labelMarker = new AMap.Marker({
+          position: lastPoint,
+          content: `<div style="background:white;padding:2px 6px;border-radius:3px;box-shadow:0 1px 3px rgba(0,0,0,0.1);">${totalDistance.toFixed(1)}米</div>`,
+          offset: new AMap.Pixel(10, -10),
+          zIndex: 10000
+        });
+        map.add(labelMarker);
+        measurePath.label = labelMarker;
+      }
+    }
+    
+    // 完成测量
+    function completeMeasurement() {
+      if (measurePoints.length < 2) {
+        showNotification('至少需要两个点才能完成测量', false);
+        return;
+      }
+      showNotification(`测量完成，总距离: ${distanceValue.textContent}米`);
+    }
+    
+    // 清除测量
+    function clearMeasurement() {
+      if (measurePath) {
+        measurePath.markers.forEach(marker => map.remove(marker));
+        if (measurePath.line) map.remove(measurePath.line);
+        if (measurePath.label) map.remove(measurePath.label);
+        measurePath = null;
+      }
+      
+      measurePoints = [];
+      measureResult.classList.add('hidden');
+      distanceValue.textContent = '0';
+    }
+    
+    // 显示通知
+    function showNotification(message, isSuccess = true) {
+      notificationText.textContent = message;
+      notificationIcon.className = isSuccess ? 'fa fa-check-circle mr-2 text-green-400' : 'fa fa-exclamation-circle mr-2 text-red-400';
+      notification.classList.remove('translate-y-20', 'opacity-0');
+      notification.classList.add('translate-y-0', 'opacity-100');
+      
+      setTimeout(() => {
+        notification.classList.remove('translate-y-0', 'opacity-100');
+        notification.classList.add('translate-y-20', 'opacity-0');
+      }, 3000);
+    }
+    
+    // 添加日志记录
+    function addLog(message, type = 'info') {
+      const logItem = document.createElement('div');
+      const time = new Date().toLocaleTimeString();
+      
+      logItem.className = `p-1.5 rounded border text-xs ${
+        type === 'success' ? 'log-item-success' : 
+        type === 'error' ? 'log-item-error' : 'log-item-info'
+      }`;
+      
+      logItem.innerHTML = `<span class="text-gray-500">${time}</span> ${message}`;
+      
+      if (parseLogs.querySelector('.italic')) {
+        parseLogs.innerHTML = '';
+      }
+      
+      parseLogs.appendChild(logItem);
+      parseLogs.scrollTop = parseLogs.scrollHeight;
+    }
+    
+    // 清空日志
+    function clearLogs() {
+      parseLogs.innerHTML = '<div class="text-gray-400 italic">等待解析地址...</div>';
+    }
+    
+    // 清除圆形按钮点击事件
+    clearCircleBtn.addEventListener('click', clearCircleSelection);
+    
+    // 解析Excel文件 - 识别两种格式并自动处理地址解析
+    function parseExcel(file) {
+      const reader = new FileReader();
+      
+      reader.onload = function(e) {
+        try {
+          const data = new Uint8Array(e.target.result);
+          const workbook = XLSX.read(data, { type: 'array' });
+          const firstSheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[firstSheetName];
+          const jsonData = XLSX.utils.sheet_to_json(worksheet);
+          
+          if (jsonData.length === 0) {
+            showNotification('Excel文件为空', false);
+            return;
+          }
+          
+          // 检查列头以确定格式
+          const firstRow = jsonData[0];
+          const headers = Object.keys(firstRow);
+          
+          // 检查是否存在经纬度字段
+          const hasLngLat = headers.some(header => 
+            header.includes('经度') || header.includes('longitude') || 
+            header.includes('纬度') || header.includes('latitude')
+          );
+          
+          // 检查是否存在详细地址字段
+          const hasAddress = headers.some(header => 
+            header.includes('详细地址') || header.includes('address')
+          );
+          
+          if (!hasLngLat && !hasAddress) {
+            showNotification('Excel文件缺少必要的字段（经度/纬度 或 详细地址）', false);
+            return;
+          }
+          
+          // 重置统计信息
+          currentImportStats = {
+            total: jsonData.length,
+            success: 0,
+            failed: 0,
+            details: []
+          };
+          
+          // 处理数据逻辑
+          const formattedData = jsonData.map((item, index) => {
+            let icon = 'red';
+            if (item.颜色 || item.color) {
+              const colorText = String(item.颜色 || item.color).trim();
+              icon = colorNameMap[colorText] || 'red';
+            }
+            
+            let lng = null, lat = null, address = '';
+            
+            // 如果存在经纬度字段，直接读取
+            if (hasLngLat) {
+              if (item.经度 || item.longitude) {
+                try {
+                  lng = parseFloat(item.经度 || item.longitude);
+                  lat = parseFloat(item.纬度 || item.latitude);
+                } catch (e) { /* 忽略错误 */ }
+              }
+            }
+            
+            // 如果存在详细地址字段，读取地址
+            if (hasAddress) {
+              address = item.详细地址 || item.address || '';
+            }
+            
+            return {
+              id: Date.now() + index,
+              name: item.名称 || item.name || '',
+              address: address,
+              lng: lng,
+              lat: lat,
+              icon: icon,
+              needGeocode: !lng || !lat // 标记是否需要地址解析
+            };
+          });
+          
+          addressData = formattedData;
+          renderAddressList();
+          showNotification(`成功导入 ${formattedData.length} 条数据`);
+          
+          // 重置API错误计数
+          consecutiveErrorCount = 0;
+          isApiPaused = false;
+          
+          // 处理经纬度或地址解析
+          let geocodePromises = [];
+          formattedData.forEach(item => {
+            if (item.lng && item.lat) {
+              addMarker(item);
+              currentImportStats.success++;
+              currentImportStats.details.push({
+                name: item.name,
+                status: 'success',
+                message: `已有经纬度: ${item.lng.toFixed(6)}, ${item.lat.toFixed(6)}`
+              });
+            } else if (item.address && item.needGeocode) {
+              // 检查API是否已配置
+              if (!AMAP_WEB_SERVICE_KEY) {
+                showNotification('请先配置高德地图地址逆解析API-Key', false);
+                return;
+              }
+              
+              // 对于没有经纬度但有详细地址的数据，进行地址解析
+              const promise = geocodeWithRetry(item.address)
+                .then(({ lng, lat }) => {
+                  item.lng = lng;
+                  item.lat = lat;
+                  item.needGeocode = false;
+                  addMarker(item);
+                  currentImportStats.success++;
+                  currentImportStats.details.push({
+                    name: item.name,
+                    status: 'success',
+                    message: `解析成功: ${lng.toFixed(6)}, ${lat.toFixed(6)}`
+                  });
+                  consecutiveErrorCount = 0; // 重置连续错误计数
+                })
+                .catch(error => {
+                  consecutiveErrorCount++; // 增加错误计数
+                  currentImportStats.failed++;
+                  currentImportStats.details.push({
+                    name: item.name,
+                    status: 'failed',
+                    message: `解析失败: ${error.message}`
+                  });
+                  
+                  if (consecutiveErrorCount >= MAX_CONSECUTIVE_ERRORS) {
+                    isApiPaused = true;
+                    addLog(`API连续失败${MAX_CONSECUTIVE_ERRORS}次，已暂停调用，请稍后再试`, 'error');
+                    showNotification(`API连续失败${MAX_CONSECUTIVE_ERRORS}次，已暂停调用`, false);
+                  } else {
+                    addLog(`详细地址解析失败: ${item.name} (${item.address}) - ${error.message}`, 'error');
+                  }
+                });
+              geocodePromises.push(promise);
+            } else {
+              // 没有经纬度也没有详细地址
+              currentImportStats.failed++;
+              currentImportStats.details.push({
+                name: item.name,
+                status: 'failed',
+                message: '缺少经纬度和详细地址'
+              });
+            }
+          });
+          
+          // 等待所有地址解析完成
+          if (geocodePromises.length > 0) {
+            Promise.all(geocodePromises).then(() => {
+              showNotification(`批量详细地址解析完成，共解析 ${geocodePromises.length} 条详细地址`);
+              const firstValidItem = addressData.find(item => item.lng && item.lat);
+              if (firstValidItem) {
+                map.setCenter([firstValidItem.lng, firstValidItem.lat]);
+              }
+              
+              // 显示处理汇总
+              setTimeout(() => showSummaryModal(), 1000);
+            });
+          } else {
+            const firstValidItem = formattedData.find(item => item.lng && item.lat);
+            if (firstValidItem) {
+              map.setCenter([firstValidItem.lng, firstValidItem.lat]);
+            }
+            
+            // 显示处理汇总
+            setTimeout(() => showSummaryModal(), 1000);
+          }
+        } catch (error) {
+          console.error('解析Excel出错:', error);
+          showNotification('解析文件失败，请检查文件格式', false);
+        }
+      };
+      
+      reader.readAsArrayBuffer(file);
+    }
+    
+    // 显示数据处理汇总模态框
+    function showSummaryModal() {
+      summaryTotal.textContent = currentImportStats.total;
+      summarySuccess.textContent = currentImportStats.success;
+      summaryFailed.textContent = currentImportStats.failed;
+      
+      summaryDetails.innerHTML = '';
+      currentImportStats.details.forEach(detail => {
+        const li = document.createElement('li');
+        li.className = detail.status === 'success' ? 'text-green-600' : 'text-red-600';
+        li.innerHTML = `<span class="font-medium">${detail.name}:</span> ${detail.message}`;
+        summaryDetails.appendChild(li);
+      });
+      
+      summaryModal.classList.remove('hidden');
+    }
+    
+    // API调用队列处理器
+    function processApiQueue() {
+      if (apiCallQueue.length === 0 || isApiPaused) return;
+      
+      const now = Date.now();
+      const timeSinceLastCall = now - lastApiCallTime;
+      
+      // 检查是否满足最小间隔时间
+      if (timeSinceLastCall < API_CALL_INTERVAL) {
+        // 如果不满足间隔，延迟执行
+        setTimeout(processApiQueue, API_CALL_INTERVAL - timeSinceLastCall);
+        return;
+      }
+      
+      // 获取队列中的第一个任务
+      const { address, resolve, reject } = apiCallQueue.shift();
+      
+      // 更新最后调用时间
+      lastApiCallTime = now;
+      
+      // 执行API调用
+      const params = new URLSearchParams({
+        key: AMAP_WEB_SERVICE_KEY,
+        address: address.trim(),
+        output: 'json'
+      });
+      
+      fetch(`${GEOCODE_API_URL}?${params}`)
+        .then(response => {
+          if (!response.ok) throw new Error(`HTTP错误: ${response.status}`);
+          return response.json();
+        })
+        .then(data => {
+          if (data.status === '1' && data.geocodes && data.geocodes.length > 0) {
+            const [lng, lat] = data.geocodes[0].location.split(',').map(Number);
+            resolve({ lng, lat });
+          } else {
+            throw new Error(`解析失败: ${data.info || data.status}`);
+          }
+        })
+        .catch(error => {
+          reject(error);
+        })
+        .finally(() => {
+          // 继续处理队列中的下一个任务
+          setTimeout(processApiQueue, 0);
+        });
+    }
+    
+    // 将API调用添加到队列
+    function queueGeocode(address) {
+      return new Promise((resolve, reject) => {
+        // 检查是否暂停API调用
+        if (isApiPaused) {
+          reject(new Error('API调用已暂停，由于连续失败次数过多'));
+          return;
+        }
+        
+        // 将任务添加到队列
+        apiCallQueue.push({ address, resolve, reject });
+        
+        // 启动队列处理器（如果还没有启动的话）
+        if (apiCallQueue.length === 1) {
+          processApiQueue();
+        }
+      });
+    }
+    
+    // 递归重试地址解析函数
+    function geocodeWithRetry(address, retries = MAX_RETRIES) {
+      return new Promise((resolve, reject) => {
+        const attempt = (retryCount) => {
+          if (isApiPaused) {
+            reject(new Error('API调用已暂停，由于连续失败次数过多'));
+            return;
+          }
+          
+          queueGeocode(address)
+            .then(result => {
+              consecutiveErrorCount = 0; // 重置连续错误计数
+              resolve(result);
+            })
+            .catch(error => {
+              consecutiveErrorCount++; // 增加错误计数
+              if (consecutiveErrorCount >= MAX_CONSECUTIVE_ERRORS) {
+                isApiPaused = true;
+                addLog(`API连续失败${MAX_CONSECUTIVE_ERRORS}次，已暂停调用，请稍后再试`, 'error');
+                showNotification(`API连续失败${MAX_CONSECUTIVE_ERRORS}次，已暂停调用`, false);
+                reject(new Error('API连续失败次数过多，已暂停调用'));
+              } else if (retryCount > 0) {
+                addLog(`详细地址解析失败，${retryCount}次重试中: ${error.message}`, 'error');
+                // 等待1秒后重试
+                setTimeout(() => {
+                  attempt(retryCount - 1);
+                }, 1000); // 1秒延迟
+              } else {
+                reject(error);
+              }
+            });
+        };
+        
+        attempt(retries);
+      });
+    }
+    
+    // 渲染地址列表
+    function renderAddressList() {
+      if (addressData.length === 0) {
+        addressList.innerHTML = `
+          <div class="text-center text-gray-500 py-10">
+            <i class="fa fa-file-text-o text-4xl mb-3 opacity-30"></i>
+            <p>暂无地址数据</p>
+          </div>
+        `;
+        return;
+      }
+      
+      addressList.innerHTML = '';
+      
+      addressData.forEach(item => {
+        const iconColorMap = {
+          red: 'bg-red-500',
+          blue: 'bg-blue-500',
+          green: 'bg-green-500',
+          yellow: 'bg-yellow-500',
+          purple: 'bg-purple-500'
+        };
+        
+        const colorNames = {
+          red: '红色', blue: '蓝色', green: '绿色', yellow: '黄色', purple: '紫色'
+        };
+        
+        const addressItem = document.createElement('div');
+        addressItem.className = `p-3 mb-2 rounded-lg border ${item.lng && item.lat ? 'border-green-200 bg-green-50' : 'border-gray-200 hover:border-primary/50 hover:bg-primary/5'} transition-all cursor-pointer`;
+        addressItem.dataset.id = item.id;
+        
+        addressItem.innerHTML = `
+          <div class="flex justify-between items-start">
+            <div>
+              <div class="flex items-center">
+                <span class="w-3 h-3 rounded-full ${iconColorMap[item.icon]} mr-2"></span>
+                <h3 class="font-medium text-gray-800">${item.name || '未命名'}</h3>
+                <span class="ml-2 text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">${colorNames[item.icon]}</span>
+              </div>
+              ${item.address ? `<p class="text-sm text-gray-600 mt-1 line-clamp-2">${item.address}</p>` : ''}
+              ${item.lng && item.lat ? `<p class="text-xs text-gray-500 mt-1">经纬度: ${item.lng.toFixed(6)}, ${item.lat.toFixed(6)}</p>` : ''}
+            </div>
+            <span class="text-xs px-2 py-0.5 rounded-full ${item.lng && item.lat ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}">
+              ${item.lng && item.lat ? '已定位' : '未定位'}
+            </span>
+          </div>
+        `;
+        
+        addressItem.addEventListener('click', () => editAddress(item.id));
+        addressList.appendChild(addressItem);
+      });
+    }
+    
+    // 添加标记到地图（使用SimpleMarker，显示完整名称在图标上方）
+    function addMarker(item) {
+      removeMarker(item.id);
+      
+      if (!item.lng || !item.lat || !SimpleMarker) return;
+      
+      const style = simpleMarkerStyles[item.icon] || simpleMarkerStyles.red;
+      const fullName = item.name || '未命名';
+      
+      // 创建SimpleMarker实例
+      const marker = new SimpleMarker({
+        iconLabel: {
+          innerHTML: '', // 清空图标内的文字
+          style: {
+            color: style.labelColor,
+            fontSize: '14px',
+            fontWeight: 'bold'
+          }
+        },
+        iconTheme: style.iconTheme,
+        iconStyle: style.iconStyle,
+        showPositionPoint: true,
+        position: [item.lng, item.lat],
+        title: fullName,
+        map: map,
+        extData: { id: item.id, icon: item.icon }
+      });      
+     
+      // 创建完整名称的标签，使用降级方案避免AMap.Label错误
+let nameLabel;
+const labelId = `marker-label-${item.id}`; // 唯一 id，便于找到 DOM 并测量宽度
+
+if (typeof AMap.Label === 'function') {
+  nameLabel = new AMap.Label({
+    content: `<div id="${labelId}" class="custom-marker-label">${fullName}</div>`,
+    // 先给一个大致的偏移，后面会根据 DOM 大小精确居中
+    offset: new AMap.Pixel(0, -80),
+    zIndex: 10 // 设置较低的zIndex，确保圆形在最顶层
+  });
+  nameLabel.setMap(map);
+  nameLabel.setPosition(marker.getPosition());
+} else {
+  // 降级方案：使用Marker代替Label
+  nameLabel = new AMap.Marker({
+    position: [item.lng, item.lat],
+    content: `<div id="${labelId}" class="custom-marker-label">${fullName}</div>`,
+    offset: new AMap.Pixel(0, -80), // 先给一个大致偏移
+    zIndex: 10 // 设置较低的zIndex，确保圆形在最顶层
+  });
+  nameLabel.setMap(map);
+}
+
+// 等待 DOM 渲染后，测量宽高并把 label 在 X 轴上水平居中（并把 Y 轴上移到图标上方）
+setTimeout(() => {
+  try {
+    const dom = document.getElementById(labelId);
+    if (!dom) return;
+
+    const w = dom.offsetWidth || dom.clientWidth || 0;
+    const h = dom.offsetHeight || dom.clientHeight || 0;
+
+    // 计算偏移：水平居中，垂直向上（icon 的视觉高度+gap）
+    const offsetX = -Math.round(w / 2);
+
+    // 这里用一个常量估算图标高度的一半加上间隙（如果你有更准确的 icon 高度可替换）
+    // 例如默认 SimpleMarker 视觉高度约 32，故：
+    const iconHalf = 20; // 如果你在别处改变 marker 大小，请同步修改这个值或动态读取
+    const gap = 20;       // label 与图标之间的间隙
+    const offsetY = - (iconHalf + h + gap); // 负值代表上移
+
+    // 如果 AMap.Label/Marker 提供 setOffset 接口，优先用它
+    if (typeof nameLabel.setOffset === 'function') {
+      nameLabel.setOffset(new AMap.Pixel(offsetX, offsetY));
+    } else if (typeof nameLabel.setOptions === 'function') {
+      // 某些版本可能使用 setOptions
+      nameLabel.setOptions({ offset: new AMap.Pixel(offsetX, offsetY) });
+    } else {
+      // 兜底：尝试直接设置属性（较少见）
+      nameLabel.offset = new AMap.Pixel(offsetX, offsetY);
+    }
+  } catch (err) {
+    // 忽略测量错误，保持原先偏移
+    console.warn('label adjust failed', err);
+  }
+}, 50); // 50ms 延时通常足够。若遇到 race 条件可增大到 100ms
+
+ // 绑定点击事件
+      marker.on('click', () => {
+  // 将当前标记置于顶层（使用修正后的方法）
+  bringMarkerToFront(item.id);
+  // 执行原有的编辑功能
+  editAddress(item.id);
+});
+      
+      // 保存标记引用
+      markers.push({ 
+        id: item.id, 
+        marker: marker,
+        icon: item.icon,
+        label: nameLabel
+      });
+    }
+
+    // 将指定ID的标记置于顶层（适配SimpleMarker的正确方法）
+function bringMarkerToFront(markerId) {
+  markers.forEach(markerObj => {
+    if (!markerObj || !markerObj.marker) return;
+    
+    if (markerObj.marker instanceof SimpleMarker) {
+      // SimpleMarker使用setOptions方法设置zIndex
+      markerObj.marker.setOptions({ zIndex: 9998 }); // 设置为略低于圆形的zIndex
+      // 标签也设置相同层级
+      if (markerObj.label) {
+        if (typeof markerObj.label.setOptions === 'function') {
+          markerObj.label.setOptions({ zIndex: 9998 });
+        } else {
+          markerObj.label.setZIndex(9998);
+        }
+      }
+    } else {
+      // 普通Marker使用setZIndex方法
+      markerObj.marker.setZIndex(9998); // 设置为略低于圆形的zIndex
+      // 标签也设置相同层级
+      if (markerObj.label) {
+        if (typeof markerObj.label.setZIndex === 'function') {
+          markerObj.label.setZIndex(9998);
+        } else if (typeof markerObj.label.setOptions === 'function') {
+          markerObj.label.setOptions({ zIndex: 9998 });
+        }
+      }
+    }
+  });
+}
+    
+    // 移除标记
+    function removeMarker(id) {
+      markers = markers.filter(markerObj => {
+        if (markerObj.id === id) {
+          // 移除标记和标签
+          if (markerObj.marker instanceof SimpleMarker) {
+            markerObj.marker.remove();
+          } else {
+            markerObj.marker.setMap(null);
+          }
+          if (markerObj.label) {
+            if (typeof markerObj.label.remove === 'function') {
+              markerObj.label.remove();
+            } else {
+              markerObj.label.setMap(null);
+            }
+          }
+          return false;
+        }
+        return true;
+      });
+    }
+    
+    // 编辑地址
+    function editAddress(id) {
+      if (isDrawMode) toggleDrawMode();
+      if (isMeasuring) toggleMeasureTool();
+      
+      const item = addressData.find(item => item.id === id);
+      if (!item) return;
+      
+      currentEditId = id;
+      pointIdInput.value = id;
+      pointNameInput.value = item.name || '';
+      pointAddressInput.value = item.address || '';
+      pointLngInput.value = item.lng ? item.lng.toFixed(6) : '';
+      pointLatInput.value = item.lat ? item.lat.toFixed(6) : '';
+      pointIconInput.value = item.icon || 'red';
+      
+      highlightSelectedIcon(item.icon);
+      modalTitle.textContent = item.name ? `编辑：${item.name}` : '编辑地址';
+      pointModal.classList.remove('hidden');
+      
+      if (item.lng && item.lat) {
+        map.setCenter([item.lng, item.lat]);
+      }
+    }
+    
+    // 高亮选中的图标
+    function highlightSelectedIcon(iconType) {
+      document.querySelectorAll('.marker-icon').forEach(icon => {
+        icon.classList.remove('ring-2', 'ring-offset-2', 'ring-primary');
+      });
+      
+      const selectedIcon = document.querySelector(`.marker-icon[data-icon="${iconType}"]`);
+      if (selectedIcon) {
+        selectedIcon.classList.add('ring-2', 'ring-offset-2', 'ring-primary');
+      }
+    }
+    
+    // 新增地址
+    function addNewAddress() {
+      if (isDrawMode) toggleDrawMode();
+      if (isMeasuring) toggleMeasureTool();
+      
+      currentEditId = null;
+      pointForm.reset();
+      pointIconInput.value = 'red';
+      modalTitle.textContent = '添加新地址';
+      pointModal.classList.remove('hidden');
+      highlightSelectedIcon('red');
+    }
+    
+    // 保存地址
+    function saveAddress() {
+      const name = pointNameInput.value.trim();
+      const address = pointAddressInput.value.trim();
+      let lng = null, lat = null;
+      
+      if (pointLngInput.value.trim()) {
+        try {
+          lng = parseFloat(pointLngInput.value);
+          if (lng < -180 || lng > 180) throw new Error();
+        } catch (e) {
+          showNotification('经度值无效', false);
+          return;
+        }
+      }
+      
+      if (pointLatInput.value.trim()) {
+        try {
+          lat = parseFloat(pointLatInput.value);
+          if (lat < -90 || lat > 90) throw new Error();
+        } catch (e) {
+          showNotification('纬度值无效', false);
+          return;
+        }
+      }
+      
+      const icon = pointIconInput.value || 'red';
+      
+      if (!name) {
+        showNotification('名称不能为空', false);
+        return;
+      }
+      
+      if (!address && !lng && !lat) {
+        showNotification('详细地址和经纬度不能同时为空', false);
+        return;
+      }
+      
+      if (currentEditId === null) {
+        // 新增地址逻辑
+        const newId = Date.now();
+        const newItem = { id: newId, name, address, lng, lat, icon, needGeocode: !lng || !lat };
+        addressData.push(newItem);
+        renderAddressList();
+        
+        if (lng && lat) {
+          addMarker(newItem);
+          map.setCenter([lng, lat]);
+          showNotification('地址添加成功');
+          pointModal.classList.add('hidden');
+        } else if (address) {
+          // 检查API是否已配置
+          if (!AMAP_WEB_SERVICE_KEY) {
+            showNotification('请先配置高德地图地址逆解析API-Key', false);
+            pointModal.classList.add('hidden');
+            return;
+          }
+          
+          resolveAddressBtn.disabled = true;
+          resolveAddressBtn.innerHTML = '<i class="fa fa-spinner fa-spin mr-2"></i>解析中...';
+          
+          geocodeWithRetry(address)
+            .then(({ lng, lat }) => {
+              newItem.lng = lng;
+              newItem.lat = lat;
+              newItem.needGeocode = false;
+              addMarker(newItem);
+              map.setCenter([lng, lat]);
+              consecutiveErrorCount = 0; // 重置连续错误计数
+              showNotification('详细地址添加并解析成功');
+            })
+            .catch(error => {
+              consecutiveErrorCount++; // 增加错误计数
+              if (consecutiveErrorCount >= MAX_CONSECUTIVE_ERRORS) {
+                isApiPaused = true;
+                addLog(`API连续失败${MAX_CONSECUTIVE_ERRORS}次，已暂停调用，请稍后再试`, 'error');
+                showNotification(`API连续失败${MAX_CONSECUTIVE_ERRORS}次，已暂停调用`, false);
+              }
+              showNotification(`添加成功但详细地址解析失败: ${error.message}`, false);
+            })
+            .finally(() => {
+              resolveAddressBtn.disabled = false;
+              resolveAddressBtn.innerHTML = '<i class="fa fa-search mr-2"></i>解析详细地址';
+              pointModal.classList.add('hidden');
+            });
+        }
+      } else {
+        // 编辑地址逻辑
+        const index = addressData.findIndex(item => item.id === currentEditId);
+        if (index === -1) return;
+        
+        addressData[index].name = name;
+        addressData[index].address = address;
+        addressData[index].lng = lng;
+        addressData[index].lat = lat;
+        addressData[index].icon = icon;
+        addressData[index].needGeocode = !lng || !lat;
+        
+        renderAddressList();
+        if (lng && lat) {
+          addMarker(addressData[index]);
+          map.setCenter([lng, lat]);
+        } else {
+          removeMarker(currentEditId);
+        }
+        
+        showNotification('地址更新成功');
+        pointModal.classList.add('hidden');
+      }
+    }
+    
+    // 解析详细地址获取坐标
+    function resolveAddress() {
+      const address = pointAddressInput.value.trim();
+      const name = pointNameInput.value.trim() || '未命名';
+      
+      if (!address) {
+        showNotification('请输入详细地址', false);
+        return;
+      }
+      
+      // 检查API是否已配置
+      if (!AMAP_WEB_SERVICE_KEY) {
+        showNotification('请先配置高德地图地址逆解析API-Key', false);
+        return;
+      }
+      
+      // 检查API是否被暂停
+      if (isApiPaused) {
+        showNotification(`API调用已暂停，由于连续失败${MAX_CONSECUTIVE_ERRORS}次，请稍后再试`, false);
+        return;
+      }
+      
+      resolveAddressBtn.disabled = true;
+      resolveAddressBtn.innerHTML = '<i class="fa fa-spinner fa-spin mr-2"></i>解析中...';
+      
+      geocodeWithRetry(address)
+        .then(({ lng, lat }) => {
+          pointLngInput.value = lng.toFixed(6);
+          pointLatInput.value = lat.toFixed(6);
+          map.setCenter([lng, lat]);
+          consecutiveErrorCount = 0; // 重置连续错误计数
+          showNotification('详细地址解析成功');
+        })
+        .catch(error => {
+          consecutiveErrorCount++; // 增加错误计数
+          if (consecutiveErrorCount >= MAX_CONSECUTIVE_ERRORS) {
+            isApiPaused = true;
+            addLog(`API连续失败${MAX_CONSECUTIVE_ERRORS}次，已暂停调用，请稍后再试`, 'error');
+            showNotification(`API连续失败${MAX_CONSECUTIVE_ERRORS}次，已暂停调用`, false);
+          }
+          showNotification(`详细地址解析失败: ${error.message}`, false);
+        })
+        .finally(() => {
+          resolveAddressBtn.disabled = false;
+          resolveAddressBtn.innerHTML = '<i class="fa fa-search mr-2"></i>解析详细地址';
+        });
+    }
+    
+    // 删除地址
+    function deleteAddress() {
+      if (currentEditId === null) return;
+      
+      if (confirm('确定要删除这个地址吗？')) {
+        addressData = addressData.filter(item => item.id !== currentEditId);
+        removeMarker(currentEditId);
+        renderAddressList();
+        pointModal.classList.add('hidden');
+        showNotification('地址已删除');
+        currentEditId = null;
+      }
+    }
+    
+    // 清空所有数据
+    function clearAllData() {
+      if (addressData.length === 0) return;
+      
+      if (confirm('确定要清空所有地址数据吗？')) {
+        addressData = [];
+        markers.forEach(markerObj => {
+          if (markerObj.marker instanceof SimpleMarker) {
+            markerObj.marker.remove();
+          } else {
+            markerObj.marker.setMap(null);
+          }
+          if (markerObj.label) {
+            if (typeof markerObj.label.remove === 'function') {
+              markerObj.label.remove();
+            } else {
+              markerObj.label.setMap(null);
+            }
+          }
+        });
+        markers = [];
+        clearCircleSelection();
+        clearMeasurement();
+        renderAddressList();
+        clearLogs();
+        // 重置API错误计数
+        consecutiveErrorCount = 0;
+        isApiPaused = false;
+        // 清空API队列
+        apiCallQueue = [];
+        lastApiCallTime = 0;
+        showNotification('所有数据已清空');
+      }
+    }
+    
+    // 导出解析结果
+    function exportParsedAddresses() {
+      if (addressData.length === 0) {
+        showNotification('没有可导出的地址数据', false);
+        return;
+      }
+      
+      const colorNames = { red: '红色', blue: '蓝色', green: '绿色', yellow: '黄色', purple: '紫色' };
+      const exportData = addressData.map((item, index) => ({
+        '序号': index + 1,
+        '名称': item.name || '未命名',
+        '详细地址': item.address || '',
+        '经度': item.lng ? item.lng.toFixed(6) : '',
+        '纬度': item.lat ? item.lat.toFixed(6) : '',
+        '标记颜色': colorNames[item.icon] || '红色',
+        '状态': item.lng && item.lat ? '已定位' : '未定位'
+      }));
+      
+      const worksheet = XLSX.utils.json_to_sheet(exportData);
+      const wscols = [
+        { wch: 6 }, { wch: 20 }, { wch: 40 }, 
+        { wch: 15 }, { wch: 15 }, { wch: 10 }, { wch: 8 }
+      ];
+      worksheet['!cols'] = wscols;
+      
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, '详细地址解析结果');
+      
+      const timestamp = new Date().toLocaleString().replace(/[/: ]/g, '-');
+      XLSX.writeFile(workbook, `详细地址解析结果_${timestamp}.xlsx`);
+      
+      showNotification('详细地址解析结果已导出');
+    }
+    
+    // 下载Excel模板
+    function downloadTemplate(templateType) {
+      const workbook = XLSX.utils.book_new();
+      
+      if (templateType === 1) {
+        // 模板1：名称+详细地址+[颜色]
+        const data = [
+          ['名称', '详细地址', '颜色'],
+          ['示例1', '北京市朝阳区阜通东大街6号', '红色'],
+          ['示例2', '上海市浦东新区陆家嘴环路1000号', '蓝色']
+        ];
+        const worksheet = XLSX.utils.aoa_to_sheet(data);
+        XLSX.utils.book_append_sheet(workbook, worksheet, '模板1');
+        XLSX.writeFile(workbook, '模板1_名称详细地址颜色.xlsx');
+      } else if (templateType === 2) {
+        // 模板2：名称+经度+纬度+[颜色]
+        const data = [
+          ['名称', '经度', '纬度', '颜色'],
+          ['示例1', 116.404, 39.915, '红色'],
+          ['示例2', 121.4737, 31.2304, '蓝色']
+        ];
+        const worksheet = XLSX.utils.aoa_to_sheet(data);
+        XLSX.utils.book_append_sheet(workbook, worksheet, '模板2');
+        XLSX.writeFile(workbook, '模板2_名称经纬度颜色.xlsx');
+      }
+    }
+    
+    // 保存API设置
+    function saveApiSettings() {
+      const newKey = apiConfigKey.value.trim();
+      const newInterval = parseInt(apiCallInterval.value);
+      const newMaxRetries = parseInt(maxRetries.value);
+      const newMaxConsecutiveErrors = parseInt(maxConsecutiveErrors.value);
+      
+      if (!newKey) {
+        showNotification('API密钥不能为空', false);
+        return;
+      }
+      
+      if (isNaN(newInterval) || newInterval < 100) {
+        showNotification('API调用间隔必须大于等于100毫秒', false);
+        return;
+      }
+      
+      if (isNaN(newMaxRetries) || newMaxRetries < 1 || newMaxRetries > 10) {
+        showNotification('最大重试次数必须在1-10之间', false);
+        return;
+      }
+      
+      if (isNaN(newMaxConsecutiveErrors) || newMaxConsecutiveErrors < 1 || newMaxConsecutiveErrors > 10) {
+        showNotification('最大连续错误次数必须在1-10之间', false);
+        return;
+      }
+      
+      AMAP_WEB_SERVICE_KEY = newKey;
+      API_CALL_INTERVAL = newInterval;
+      MAX_RETRIES = newMaxRetries;
+      MAX_CONSECUTIVE_ERRORS = newMaxConsecutiveErrors;
+      
+      showNotification('API设置已保存');
+      settingsModal.classList.add('hidden');
+    }
+    
+    // 测试API密钥
+    function testApiKeyFunction() {
+      const testAddress = '北京市天安门';
+      const testKey = apiConfigKey.value.trim();
+      
+      if (!testKey) {
+        showNotification('请先输入API密钥', false);
+        return;
+      }
+      
+      // 创建测试按钮的加载状态
+      const originalText = testApiKey.innerHTML;
+      testApiKey.innerHTML = '<i class="fa fa-spinner fa-spin"></i>';
+      testApiKey.disabled = true;
+      
+      const params = new URLSearchParams({
+        key: testKey,
+        address: testAddress,
+        output: 'json'
+      });
+      
+      fetch(`${GEOCODE_API_URL}?${params}`)
+        .then(response => {
+          if (!response.ok) throw new Error(`HTTP错误: ${response.status}`);
+          return response.json();
+        })
+        .then(data => {
+          if (data.status === '1' && data.geocodes && data.geocodes.length > 0) {
+            const [lng, lat] = data.geocodes[0].location.split(',').map(Number);
+            showNotification(`API测试成功！天安门经纬度: ${lng.toFixed(6)}, ${lat.toFixed(6)}`, true);
+          } else {
+            throw new Error(`解析失败: ${data.info || data.status}`);
+          }
+        })
+        .catch(error => {
+          showNotification(`API测试失败: ${error.message}`, false);
+        })
+        .finally(() => {
+          // 恢复按钮状态
+          testApiKey.innerHTML = originalText;
+          testApiKey.disabled = false;
+        });
+    }
+    
+    // 切换API密钥可见性
+    function toggleApiKeyVisibilityFunction() {
+      const input = document.getElementById('apiConfigKey');
+      const icon = document.getElementById('toggleApiKeyVisibility').querySelector('i');
+      
+      if (input.type === 'password') {
+        input.type = 'text';
+        icon.className = 'fa fa-eye-slash';
+      } else {
+        input.type = 'password';
+        icon.className = 'fa fa-eye';
+      }
+    }
+    
+    // 地图控制
+    function zoomIn() { map.setZoom(map.getZoom() + 1); }
+    function zoomOut() { map.setZoom(map.getZoom() - 1); }
+    function centerMap() {
+      if (addressData.length > 0 && addressData[0].lng && addressData[0].lat) {
+        map.setCenter([addressData[0].lng, addressData[0].lat]);
+      } else {
+        AMap.plugin('AMap.Geolocation', function() {
+          const geolocation = new AMap.Geolocation();
+          geolocation.getCurrentPosition(function(status, result) {
+            if (status === 'complete' && result.info === 'SUCCESS') {
+              map.setCenter(result.position);
+            }
+          });
+        });
+      }
+    }
+    
+    // 事件监听
+    function setupEventListeners() {
+      // 文件上传
+      uploadArea.addEventListener('click', () => fileInput.click());
+      fileInput.addEventListener('change', (e) => {
+        if (e.target.files && e.target.files[0]) {
+          parseExcel(e.target.files[0]);
+          fileInput.value = '';
+        }
+      });
+      uploadArea.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        uploadArea.classList.add('border-primary', 'bg-primary/5');
+      });
+      uploadArea.addEventListener('dragleave', () => {
+        uploadArea.classList.remove('border-primary', 'bg-primary/5');
+      });
+      uploadArea.addEventListener('drop', (e) => {
+        e.preventDefault();
+        uploadArea.classList.remove('border-primary', 'bg-primary/5');
+        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+          parseExcel(e.dataTransfer.files[0]);
+        }
+      });
+      
+      // 模板下载
+      downloadTemplate1.addEventListener('click', () => downloadTemplate(1));
+      downloadTemplate2.addEventListener('click', () => downloadTemplate(2));
+      
+      // 地址管理
+      addNewPointBtn.addEventListener('click', addNewAddress);
+      closePointModalBtn.addEventListener('click', () => {
+        pointModal.classList.add('hidden');
+      });
+      resolveAddressBtn.addEventListener('click', resolveAddress);
+      savePointBtn.addEventListener('click', saveAddress);
+      deletePointBtn.addEventListener('click', deleteAddress);
+      clearAllBtn.addEventListener('click', clearAllData);
+      
+      // 图标选择
+      document.querySelectorAll('.marker-icon').forEach(icon => {
+        icon.addEventListener('click', () => {
+          const iconType = icon.getAttribute('data-icon');
+          pointIconInput.value = iconType;
+          highlightSelectedIcon(iconType);
+        });
+      });
+      
+      // 圆形选择
+      toggleDrawModeBtn.addEventListener('click', toggleDrawMode);
+      
+      // 测距工具
+      toggleMeasureToolBtn.addEventListener('click', toggleMeasureTool);
+      clearMeasureBtn.addEventListener('click', clearMeasurement);
+      
+      // 导出
+      exportExcelBtn.addEventListener('click', exportParsedAddresses);
+      
+      // 地图控制
+      zoomInBtn.addEventListener('click', zoomIn);
+      zoomOutBtn.addEventListener('click', zoomOut);
+      centerMapBtn.addEventListener('click', centerMap);
+      
+      // 帮助模态框
+      helpBtn.addEventListener('click', () => helpModal.classList.remove('hidden'));
+      closeHelpModalBtn.addEventListener('click', () => helpModal.classList.add('hidden'));
+      helpModal.addEventListener('click', (e) => {
+        if (e.target === helpModal) helpModal.classList.add('hidden');
+      });
+      
+      // 设置模态框
+      settingsBtn.addEventListener('click', () => {
+        // 填充当前设置值
+        apiConfigKey.value = AMAP_WEB_SERVICE_KEY;
+        apiCallInterval.value = API_CALL_INTERVAL;
+        maxRetries.value = MAX_RETRIES;
+        maxConsecutiveErrors.value = MAX_CONSECUTIVE_ERRORS;
+        settingsModal.classList.remove('hidden');
+      });
+      closeSettingsModalBtn.addEventListener('click', () => settingsModal.classList.add('hidden'));
+      saveSettingsBtn.addEventListener('click', saveApiSettings);
+      toggleApiKeyVisibility.addEventListener('click', toggleApiKeyVisibilityFunction);
+      testApiKey.addEventListener('click', testApiKeyFunction);
+      settingsModal.addEventListener('click', (e) => {
+        if (e.target === settingsModal) settingsModal.classList.add('hidden');
+      });
+      
+      // 数据处理汇总模态框
+      closeSummaryModalBtn.addEventListener('click', () => summaryModal.classList.add('hidden'));
+      closeSummaryBtn.addEventListener('click', () => summaryModal.classList.add('hidden'));
+      summaryModal.addEventListener('click', (e) => {
+        if (e.target === summaryModal) summaryModal.classList.add('hidden');
+      });
+      
+      // 点击模态框外部关闭
+      pointModal.addEventListener('click', (e) => {
+        if (e.target === pointModal) {
+          pointModal.classList.add('hidden');
+        }
+      });
+      
+      // 日志
+      clearLogsBtn.addEventListener('click', clearLogs);
+    }
+    
+    // 初始化应用
+    function initApp() {
+      initMap();
+      setupEventListeners();
+      renderAddressList();
+    }
+    
+    // 确保DOM加载完成后初始化
+    document.addEventListener('DOMContentLoaded', initApp);
+  </script>
+</body>
+</html>
